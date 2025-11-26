@@ -1,0 +1,237 @@
+{
+  "name": "AutoParts Sentinel Loop",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "autoparts/sentinel",
+        "responseMode": "lastNode",
+        "options": {
+          "responseCode": 200
+        }
+      },
+      "id": "Webhook_Trigger",
+      "name": "Defect Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 1,
+      "position": [
+        200,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "completion",
+        "model": "gpt-4o-mini",
+        "prompt": "You are a quality-control supervisor. A defect of type {{$json[\"defect_type\"]}} with confidence {{$json[\"confidence\"]}} was detected on part {{$json[\"part_id\"]}}. Classify severity as High or Low and provide a short remediation plan.",
+        "options": {
+          "responseFormat": "json",
+          "maxTokens": 200
+        }
+      },
+      "id": "OpenAI_QC",
+      "name": "QC Reasoner",
+      "type": "n8n-nodes-base.openAi",
+      "typeVersion": 2,
+      "position": [
+        500,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "string": [
+            {
+              "value1": "={{ $json[\"data\"][0][\"severity\"] }}",
+              "operation": "equal",
+              "value2": "High"
+            }
+          ]
+        }
+      },
+      "id": "If_Branch",
+      "name": "Severity Gate",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 1,
+      "position": [
+        760,
+        300
+      ]
+    },
+    {
+      "parameters": {
+        "requestMethod": "POST",
+        "url": "https://mock-autoparts-controller/api/lines/stop",
+        "jsonParameters": true,
+        "options": {},
+        "bodyParametersJson": "={\"line_id\": $json[\"line_id\"] ?? \"LN-07\", \"reason\": $json[\"data\"][0][\"remediation\"]}"
+      },
+      "id": "HTTP_Stop",
+      "name": "Stop Line",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 1,
+      "position": [
+        1020,
+        180
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "message",
+        "operation": "send",
+        "channel": "#quality-alerts",
+        "text": "=🚨 *Line stopped* for {{$json[\"part_id\"]}}: {{$json[\"data\"][0][\"remediation\"]}}"
+      },
+      "id": "Slack_Alert",
+      "name": "Notify Floor Lead",
+      "type": "n8n-nodes-base.slack",
+      "typeVersion": 1,
+      "position": [
+        1240,
+        80
+      ]
+    },
+    {
+      "parameters": {
+        "sheetId": "1xSentinelSheet",
+        "range": "Defects!A:D",
+        "options": {
+          "valueInputMode": "RAW"
+        },
+        "data": "=[[ $json[\"part_id\"], $json[\"defect_type\"], $json[\"confidence\"], $json[\"data\"][0][\"remediation\"] ]]"
+      },
+      "id": "Sheets_Log",
+      "name": "Log Defect",
+      "type": "n8n-nodes-base.googleSheets",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        420
+      ]
+    },
+    {
+      "parameters": {
+        "resource": "issue",
+        "operation": "create",
+        "project": "QAOPS",
+        "summary": "=Manual review needed for {{$json[\"part_id\"]}}",
+        "description": "=Defect {{$json[\"defect_type\"]}} ({{$json[\"confidence\"]}}) flagged by Sentinel. Plan: {{$json[\"data\"][0][\"remediation\"]}}"
+      },
+      "id": "Jira_Ticket",
+      "name": "Create Review Ticket",
+      "type": "n8n-nodes-base.jira",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        520
+      ]
+    },
+    {
+      "parameters": {
+        "operation": "executeQuery",
+        "query": "UPDATE inventory SET good_parts = good_parts - 1 WHERE part_id = {{ $json[\"part_id\"] }};"
+      },
+      "id": "Postgres_Update",
+      "name": "Sync Inventory",
+      "type": "n8n-nodes-base.postgres",
+      "typeVersion": 1,
+      "position": [
+        1440,
+        300
+      ]
+    }
+  ],
+  "connections": {
+    "Defect Webhook": {
+      "main": [
+        [
+          {
+            "node": "QC Reasoner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "QC Reasoner": {
+      "main": [
+        [
+          {
+            "node": "Severity Gate",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Severity Gate": {
+      "main": [
+        [
+          {
+            "node": "Stop Line",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Notify Floor Lead",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Sync Inventory",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Log Defect",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Create Review Ticket",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Sync Inventory",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Stop Line": {
+      "main": [
+        [
+          {
+            "node": "Notify Floor Lead",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Defect": {
+      "main": [
+        [
+          {
+            "node": "Create Review Ticket",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "settings": {
+    "executionOrder": "v1"
+  },
+  "versionId": "1.0.0",
+  "meta": {
+    "instanceId": "autoparts-simulation"
+  }
+}
+

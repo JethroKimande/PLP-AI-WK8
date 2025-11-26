@@ -226,12 +226,18 @@
       ]
     }
   },
+  "active": false,
   "settings": {
     "executionOrder": "v1"
   },
-  "versionId": "1.0.0",
+  "versionId": "a5f6e7c4-4fd0-4f1a-9c91-0b5f20a4c001",
+  "id": "AutopartsSentinelWorkflow",
   "meta": {
-    "instanceId": "autoparts-simulation"
-  }
+    "instanceId": "autoparts-simulation",
+    "templateCredsSetupCompleted": true
+  },
+  "pinData": {},
+  "tags": [],
+  "triggerCount": 0
 }
 
